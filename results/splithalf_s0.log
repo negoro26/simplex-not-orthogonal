@@ -1,0 +1,42 @@
+== split-half s=0_bf16_d64_lr0.001: 1401 complete words, sentences per sense median 3 per half
+  protocol (per-word-centered)     PR raw    7.7   PR signal    7.4   PR noise    10.1   signal share of trace 0.89
+  uncentered sense centroids       PR raw   12.3   PR signal   12.2   PR noise    10.1   signal share of trace 0.97
+  word centroids                   PR raw   11.1   PR signal   11.1   PR noise     9.9   signal share of trace 0.99
+  protocol (per-word-centered)     PR raw    7.5   PR signal    7.3   PR noise    10.0   signal share of trace 0.91
+  uncentered sense centroids       PR raw   12.2   PR signal   12.2   PR noise     9.9   signal share of trace 0.97
+== split-half s=0_bf16_d128_lr0.001: 1401 complete words, sentences per sense median 3 per half
+  protocol (per-word-centered)     PR raw   10.0   PR signal    9.8   PR noise    12.8   signal share of trace 0.91
+  uncentered sense centroids       PR raw   18.5   PR signal   18.5   PR noise    12.8   signal share of trace 0.96
+  word centroids                   PR raw   16.4   PR signal   16.2   PR noise    12.8   signal share of trace 0.99
+  protocol (per-word-centered)     PR raw    9.9   PR signal    9.7   PR noise    12.7   signal share of trace 0.92
+  uncentered sense centroids       PR raw   18.3   PR signal   18.4   PR noise    12.7   signal share of trace 0.97
+== split-half s=0_bf16_d256_lr0.001: 1401 complete words, sentences per sense median 3 per half
+  protocol (per-word-centered)     PR raw   16.2   PR signal   15.5   PR noise    21.0   signal share of trace 0.87
+  uncentered sense centroids       PR raw   28.9   PR signal   29.2   PR noise    20.9   signal share of trace 0.93
+  word centroids                   PR raw   28.0   PR signal   27.6   PR noise    20.6   signal share of trace 0.98
+  protocol (per-word-centered)     PR raw   15.9   PR signal   15.3   PR noise    20.8   signal share of trace 0.89
+  uncentered sense centroids       PR raw   28.8   PR signal   29.0   PR noise    20.7   signal share of trace 0.94
+== split-half s=0_bf16_d512_lr0.001: 1401 complete words, sentences per sense median 3 per half
+  protocol (per-word-centered)     PR raw   24.6   PR signal   22.9   PR noise    32.2   signal share of trace 0.81
+  uncentered sense centroids       PR raw   42.1   PR signal   42.7   PR noise    32.2   signal share of trace 0.89
+  word centroids                   PR raw   43.9   PR signal   43.2   PR noise    31.6   signal share of trace 0.96
+  protocol (per-word-centered)     PR raw   24.0   PR signal   22.5   PR noise    32.1   signal share of trace 0.84
+  uncentered sense centroids       PR raw   41.9   PR signal   42.4   PR noise    32.0   signal share of trace 0.91
+== split-half s=0_bf16_d1024_lr0.001: 1401 complete words, sentences per sense median 3 per half
+  protocol (per-word-centered)     PR raw   25.2   PR signal   32.7   PR noise     9.7   signal share of trace 0.57
+  uncentered sense centroids       PR raw   41.0   PR signal   49.8   PR noise     9.6   signal share of trace 0.74
+  word centroids                   PR raw   44.5   PR signal   43.2   PR noise     9.1   signal share of trace 0.90
+  protocol (per-word-centered)     PR raw   33.0   PR signal   34.8   PR noise    14.1   signal share of trace 0.63
+  uncentered sense centroids       PR raw   48.5   PR signal   50.4   PR noise    13.8   signal share of trace 0.81
+== split-half s=0_bf16_d2048: 1401 complete words, sentences per sense median 3 per half
+  protocol (per-word-centered)     PR raw   29.8   PR signal   26.1   PR noise    39.5   signal share of trace 0.71
+  uncentered sense centroids       PR raw   42.6   PR signal   42.9   PR noise    39.5   signal share of trace 0.85
+  word centroids                   PR raw   48.3   PR signal   48.3   PR noise    38.5   signal share of trace 0.95
+  protocol (per-word-centered)     PR raw   30.0   PR signal   26.7   PR noise    39.9   signal share of trace 0.74
+  uncentered sense centroids       PR raw   42.8   PR signal   43.0   PR noise    40.0   signal share of trace 0.87
+== split-half s=0: 1401 complete words, sentences per sense median 3 per half
+  protocol (per-word-centered)     PR raw   49.2   PR signal   42.1   PR noise    61.1   signal share of trace 0.68
+  uncentered sense centroids       PR raw   76.4   PR signal   78.3   PR noise    61.3   signal share of trace 0.80
+  word centroids                   PR raw  102.5   PR signal  103.8   PR noise    59.8   signal share of trace 0.92
+  protocol (per-word-centered)     PR raw   51.4   PR signal   45.6   PR noise    62.0   signal share of trace 0.71
+  uncentered sense centroids       PR raw   78.7   PR signal   80.4   PR noise    62.7   signal share of trace 0.83

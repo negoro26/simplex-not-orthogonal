@@ -1,0 +1,29 @@
+== nulls g=0.0 l=0.0 s=0_bf16_group499
+  senses 10000, complete words 1999
+
+== RANDOM-INIT model (untrained, same seed)
+  same-word median cos [raw     ] +0.953   rank pairs {'r1-r2': 0.967, 'r1-r3': 0.961, 'r1-r4': 0.955, 'r1-r5': 0.95, 'r2-r3': 0.957, 'r2-r4': 0.951, 'r2-r5': 0.946, 'r3-r4': 0.945, 'r3-r5': 0.94, 'r4-r5': 0.934}
+  same-word median cos [global  ] +0.924   rank pairs {'r1-r2': 0.946, 'r1-r3': 0.937, 'r1-r4': 0.927, 'r1-r5': 0.919, 'r2-r3': 0.93, 'r2-r4': 0.92, 'r2-r5': 0.912, 'r3-r4': 0.912, 'r3-r5': 0.904, 'r4-r5': 0.895}
+  same-word median cos [perword ] -0.249   rank pairs {'r1-r2': -0.104, 'r1-r3': -0.164, 'r1-r4': -0.219, 'r1-r5': -0.269, 'r2-r3': -0.199, 'r2-r4': -0.249, 'r2-r5': -0.285, 'r3-r4': -0.281, 'r3-r5': -0.31, 'r4-r5': -0.335}
+  per-word base norm / sense-deviation norm = 4.91
+  cross-word dev (protocol centroids): p50 1.63  p99.9 14.8  max 36.0   PR 396
+  isotropic prediction at d_eff=PR: p50 ~ 1.94
+  null A, isotropic R^d:         p50 0.60  p99.9 2.95
+  null B, spectrum-matched Gaussian (word structure kept): p50 1.67  p99.9 11.4  max 23.5
+  shared-cue pairs: med 15.1  p90 23.3  P(>21°) 0.179  n 94,843   | disjoint: med 1.63  P(>21°) 0.0000
+  shared-cue same-rank med 17.2 (n 14,930)   cross-rank med 14.8 (n 79,913)
+  Jaccard bins (upper edge: med, n): 0.25: 7.7 (3965), 0.5: 11.9 (21356), 0.75: 14.7 (39603), 1.0: 18.4 (29919)
+  senses 10000, complete words 1999
+
+== TRAINED checkpoint
+  same-word median cos [raw     ] +0.548   rank pairs {'r1-r2': 0.548, 'r1-r3': 0.556, 'r1-r4': 0.551, 'r1-r5': 0.555, 'r2-r3': 0.534, 'r2-r4': 0.54, 'r2-r5': 0.537, 'r3-r4': 0.512, 'r3-r5': 0.518, 'r4-r5': 0.492}
+  same-word median cos [global  ] +0.465   rank pairs {'r1-r2': 0.462, 'r1-r3': 0.473, 'r1-r4': 0.469, 'r1-r5': 0.475, 'r2-r3': 0.448, 'r2-r4': 0.457, 'r2-r5': 0.454, 'r3-r4': 0.425, 'r3-r5': 0.434, 'r4-r5': 0.404}
+  same-word median cos [perword ] -0.249   rank pairs {'r1-r2': -0.265, 'r1-r3': -0.22, 'r1-r4': -0.219, 'r1-r5': -0.215, 'r2-r3': -0.247, 'r2-r4': -0.219, 'r2-r5': -0.235, 'r3-r4': -0.268, 'r3-r5': -0.263, 'r4-r5': -0.32}
+  per-word base norm / sense-deviation norm = 1.30
+  cross-word dev (protocol centroids): p50 4.77  p99.9 48.7  max 72.2   PR 62
+  isotropic prediction at d_eff=PR: p50 ~ 4.92
+  null A, isotropic R^d:         p50 0.60  p99.9 2.95
+  null B, spectrum-matched Gaussian (word structure kept): p50 4.89  p99.9 23.2  max 35.6
+  shared-cue pairs: med 49.2  p90 58.0  P(>21°) 0.998  n 94,843   | disjoint: med 4.76  P(>21°) 0.0030
+  shared-cue same-rank med 54.2 (n 14,930)   cross-rank med 48.5 (n 79,913)
+  Jaccard bins (upper edge: med, n): 0.25: 43.4 (3965), 0.5: 45.9 (21356), 0.75: 48.5 (39603), 1.0: 53.3 (29919)

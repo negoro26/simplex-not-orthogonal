@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+results/*.ckpt
+results/*.pt
+paper/*.pdf
+!paper/main.pdf
+paper/*.png
+paper/*.aux
+paper/*.log
+paper/*.bbl
+paper/*.blg
+paper_arXiv/
+paper_arXiv.tar.gz
+paper/review/

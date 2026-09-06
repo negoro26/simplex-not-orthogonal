@@ -1,0 +1,23 @@
+== nulls g=0.0 l=0.0 s=0_bf16_d512
+  senses 10000, complete words 1999
+
+== RANDOM-INIT model (untrained, same seed)
+  same-word median cos [raw     ] +0.999   rank pairs {'r1-r2': 0.999, 'r1-r3': 0.999, 'r1-r4': 0.999, 'r1-r5': 0.999, 'r2-r3': 0.999, 'r2-r4': 0.999, 'r2-r5': 0.999, 'r3-r4': 0.999, 'r3-r5': 0.999, 'r4-r5': 0.998}
+  same-word median cos [global  ] +0.999   rank pairs {'r1-r2': 0.999, 'r1-r3': 0.999, 'r1-r4': 0.999, 'r1-r5': 0.999, 'r2-r3': 0.999, 'r2-r4': 0.999, 'r2-r5': 0.999, 'r3-r4': 0.999, 'r3-r5': 0.998, 'r4-r5': 0.998}
+  same-word median cos [perword ] -0.249   rank pairs {'r1-r2': -0.099, 'r1-r3': -0.166, 'r1-r4': -0.221, 'r1-r5': -0.27, 'r2-r3': -0.196, 'r2-r4': -0.254, 'r2-r5': -0.282, 'r3-r4': -0.278, 'r3-r5': -0.308, 'r4-r5': -0.335}
+  per-word base norm / sense-deviation norm = 32.50
+  cross-word dev (protocol centroids): p50 3.36  p99.9 23.1  max 55.5   PR 124
+  isotropic prediction at d_eff=PR: p50 ~ 3.47
+  null A, isotropic R^d:         p50 1.71  p99.9 8.33
+  null B, spectrum-matched Gaussian (word structure kept): p50 3.40  p99.9 17.3  max 31.3
+  senses 10000, complete words 1999
+
+== TRAINED checkpoint
+  same-word median cos [raw     ] +0.845   rank pairs {'r1-r2': 0.816, 'r1-r3': 0.851, 'r1-r4': 0.858, 'r1-r5': 0.853, 'r2-r3': 0.819, 'r2-r4': 0.83, 'r2-r5': 0.842, 'r3-r4': 0.831, 'r3-r5': 0.837, 'r4-r5': 0.843}
+  same-word median cos [global  ] +0.841   rank pairs {'r1-r2': 0.814, 'r1-r3': 0.849, 'r1-r4': 0.858, 'r1-r5': 0.853, 'r2-r3': 0.813, 'r2-r4': 0.824, 'r2-r5': 0.837, 'r3-r4': 0.824, 'r3-r5': 0.829, 'r4-r5': 0.834}
+  same-word median cos [perword ] -0.253   rank pairs {'r1-r2': -0.384, 'r1-r3': -0.178, 'r1-r4': -0.159, 'r1-r5': -0.227, 'r2-r3': -0.293, 'r2-r4': -0.256, 'r2-r5': -0.185, 'r3-r4': -0.288, 'r3-r5': -0.259, 'r4-r5': -0.208}
+  per-word base norm / sense-deviation norm = 2.53
+  cross-word dev (protocol centroids): p50 11.17  p99.9 54.4  max 81.4   PR 13
+  isotropic prediction at d_eff=PR: p50 ~ 10.61
+  null A, isotropic R^d:         p50 1.71  p99.9 8.33
+  null B, spectrum-matched Gaussian (word structure kept): p50 10.99  p99.9 48.6  max 69.6

@@ -1,0 +1,36 @@
+preflight [NVIDIA GeForce RTX 5060 Laptop GPU]: 8.0GB VRAM free (need 6.8)
+== BIG d=4096 gamma=0.0 lam=0.0 seed=0 V=14082 train=86400 test=9600 device=cuda prec=bf16 pen=coact
+  step     0  loss 9.5549
+  step   500  loss 0.3833
+  step  1000  loss 0.1361
+  step  1500  loss 0.1785
+  step  2000  loss 0.2856
+  step  2500  loss 0.2377
+  step  3000  loss 0.2101
+  step  3500  loss 0.2594
+  step  4000  loss 0.1599
+  step  4500  loss 0.0195
+  step  5000  loss 0.1972
+  step  5500  loss 0.0651
+  step  5999  loss 0.0585
+train 938s  saved results/big_g0.0_l0.0_s0_bf16_lr0.0003.ckpt
+held-out cont acc 0.867
+per-rank (held-out): {'r1': 'acc=0.947 loss=0.289 n=4189', 'r2': 'acc=0.899 loss=0.476 n=2193', 'r3': 'acc=0.820 loss=0.970 n=1401', 'r4': 'acc=0.733 loss=1.499 n=1003', 'r5': 'acc=0.612 loss=2.400 n=814'}
+capture 37s  (96000 vectors)
+[resid] same-word median cos -0.250 (n=20000 pairs, k=5 simplex=-0.25) -> SIMPLEX
+rank-pair mean cos: {'r1-r2': -0.212, 'r1-r3': -0.233, 'r1-r4': -0.231, 'r1-r5': -0.247, 'r2-r3': -0.223, 'r2-r4': -0.218, 'r2-r5': -0.244, 'r3-r4': -0.252, 'r3-r5': -0.263, 'r4-r5': -0.283}
+split-half reliability: {'r1': 0.85, 'r2': 0.73, 'r3': 0.608, 'r4': 0.504, 'r5': 0.436}
+weighted cross-word interference: 0.0130 (pair mass covered 1.00)
+packing: 10000 senses, 49975000 cross-word pairs
+  angular deviation from 90° — SGD:    {'p50.0': 3.933, 'p89.9': 9.621, 'p99.0': 15.491, 'p99.9': 42.196} max 63.40°
+  angular deviation from 90° — random: {'p50.0': 0.604, 'p89.9': 1.473, 'p99.0': 2.306, 'p99.9': 2.945} max 5.23°
+  eps-grid  viol(SGD)  viol(random)   [fraction of pairs beyond 90°±eps]
+    ± 4.00°   0.4927     0.0000
+    ± 4.56°   0.4343     0.0000
+    ± 5.20°   0.3729     0.0000
+    ± 5.92°   0.3099     0.0000
+    ± 6.75°   0.2473     0.0000
+    ± 7.70°   0.1875     0.0000
+    ± 8.77°   0.1333     0.0000
+    ±10.00°   0.0875     0.0000
+saved results/big_g0.0_l0.0_s0_bf16_lr0.0003.pt

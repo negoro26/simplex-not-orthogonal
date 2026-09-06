@@ -1,0 +1,4 @@
+# Project chktex config: template macros and pedantic spacing rules suppressed.
+# 1,8: template ellipsis/parens  2,31: \\[..] after tikz  3,25: math-mode parens
+# 12,13: abbreviation / intersentence spacing (false positives on `vs.`, `et al.`, `CPU.`)
+# 24,36,44: sectioning / spacing around brackets in pgfplots options

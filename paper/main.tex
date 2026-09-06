@@ -1,0 +1,1038 @@
+\documentclass{article}
+\usepackage{iclr2027_conference,times}
+\input{math_commands.tex}
+\usepackage{hyperref}
+\hypersetup{colorlinks,linkcolor=blue!50!black,citecolor=blue!50!black,urlcolor=blue!50!black}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{makecell}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepgfplotslibrary{groupplots}
+\pgfplotsset{
+  discard if not/.style 2 args={x filter/.append code={
+      \edef\tempa{\thisrow{#1}}\edef\tempb{#2}%
+\ifx\tempa\tempb\else\def\pgfmathresult{inf}\fi}}}
+\usepackage{xcolor}
+\usepackage{graphicx}
+
+% arXiv version: names shown, header overridden. For the double-blind ICLR
+% submission comment out both lines.
+\iclrfinalcopy
+
+\title{Fifty Dimensions for Ten Thousand Senses:\\
+How a Transformer Packs More Senses than Width}
+
+\author{Alexandru-Mihai Negrescu \\ \texttt{negrescualex05@gmail.com}}
+
+\newcommand{\degr}{^{\circ}}
+% table cell: median with the seed range beneath in small gray
+\newcommand{\mr}[3]{\makecell{#1\\[-1pt]{\scriptsize\color{black!55}[#2, #3]}}}
+\newcommand{\mc}[2]{\makecell{#1\\[-1pt]{\scriptsize\color{black!55}#2}}}
+% heatmap cell labels: white on dark cells, black when the transformed meta (0--1000) exceeds #1
+\pgfplotsset{cellabels/.style={nodes near
+    coords={\pgfmathprintnumber[fixed,precision=2]{\pgfplotspointmeta}},every node near
+    coord/.append
+style={font=\tiny,anchor=center,/utils/exec={\pgfmathparse{\pgfplotspointmetatransformed>#1}\ifnum\pgfmathresult=1\color{black}\else\color{white}\fi}}}}
+
+\begin{document}
+\maketitle
+\lhead{Preprint. Under review.}
+
+\begin{abstract}
+  A one-layer transformer is trained on a synthetic language in which $10^4$ word
+  senses, with known Zipf frequencies and known cue-based co-activation, must be
+  read out of a $d{=}4096$ residual stream. The width leaves room for a
+  near-orthogonal code, and the question is what SGD does with that room. It
+  compresses. The sense code occupies $46$--$50$ effective dimensions after
+  training ($42$ after a split-half noise correction), about $1\%$ of the width,
+  and a spectrum-matched null shows that the code's bulk non-orthogonality is this
+  dimensionality and nothing more. The one
+  structured departure is a tail of sense pairs that share context cues. That tail
+  is inherited from the input: it is present and graded in cue overlap at
+  initialization, because a bag-of-tokens layer sums the cue embeddings into the
+  residual, and training amplifies it along with the compression while keeping the
+  shared-to-disjoint ratio near $10\times$. A registered rank-mixed corpus shows
+  cue identity carries most of it and frequency rank about $5\degr$; the second
+  half of that rule, a subspace separation, failed. A width sweep from $64$ to
+  $4096$ shows the task saturates at $0.9$ accuracy with $128$ dimensions and a
+  ten-dimensional code, while the code SGD builds keeps growing with the width,
+  about $d^{0.45}$, for no gain in accuracy; the tail is flat throughout. An
+  interference penalty spreads the bulk to the null level without removing
+  the tail. Two measurement pitfalls are results in their own right: per-word
+  centering forces the same-word cosine to $-1/(k{-}1)$, and an isotropic null in
+  $\mathbb{R}^d$ misreads low dimensionality as failed packing. The design was
+  pre-registered; every failed rule is reported.
+\end{abstract}
+
+\section{Introduction}
+
+A layer of width $d$ can hold far more than $d$ features if their directions are only
+approximately orthogonal, and the number of unit vectors with pairwise
+$|\cos|\le\sin\varepsilon$ grows as $e^{c\varepsilon^2
+d}$~\citep{tao2013kl,garg2026features}. Superposition
+theory~\citep{elhage2022toy,scherlis2022polysemanticity} takes this as the mechanism by
+which networks represent more features than neurons, and at saturation it predicts
+tight frames for independent sparse features, with correlated features allowed to
+collapse or to share directions. The predictions have been tested on autoencoders
+with independent sparse features. They have not been tested on a next-token model
+trained on a language whose feature inventory, frequencies, and co-activation
+structure are known and exceed the width. Our features are correlated by
+construction, so the tight-frame prediction is not the one at stake. The question
+is what SGD does with the near-orthogonal headroom when it has it. The answer is
+that it compresses, in line with the low-rank bias of gradient
+training~\citep{papyan2020collapse,ansuini2019intrinsic,huh2023lowrank}, and the
+only structured departure from that compressed code is one the input already
+contains.
+
+Polysemy is the natural test case. Senses of one word never fire together, so theory
+lets them share a subspace at no cost; senses of different words co-activate, so that
+is where interference binds; frequency sets the allocation. We build a language in
+which all three are controlled, train a transformer with $S{=}10^4$ senses in
+$d{=}4096$, and ask what SGD packs.
+
+\paragraph{Contributions.}
+\begin{enumerate}[leftmargin=*,itemsep=1pt,topsep=2pt]
+  \item SGD compresses the sense code. The protocol centroids have participation
+    ratio $46$--$50$ of $4096$ after training (Gaussian reference $2905$; untrained
+    initialization $383$, itself an upper bound since centroid noise inflates PR), and
+    a spectrum-matched null shows the code's bulk non-orthogonality is this
+    dimensionality, p50 $5.36\degr$--$5.51\degr$ null against
+    $5.41\degr$--$5.65\degr$ observed. The tail is what remains, p99.9
+    $54.2\degr$--$54.8\degr$ against $25.8\degr$--$26.8\degr$ (\S\ref{sec:cross}).
+  \item The tail's pattern is inherited from the input; training amplifies it.
+    Shared-cue pairs are already aligned at initialization, median $17\degr$
+    against $1.6\degr$ for cue-disjoint pairs and graded in cue overlap $8\degr$ to
+    $21\degr$, as expected when a bag-of-tokens layer sums the cue embeddings into
+    the residual. After training the two populations sit at $54\degr$ against
+    $5.6\degr$, the same $10\times$ ratio, with the shared-cue $|\cos|$ raised from
+    $0.29$ to $0.80$. A registered rank-mixed corpus puts most of the alignment on
+    cue identity and about $5\degr$ on frequency rank, also present at
+    initialization; the rule's subspace clause failed (\S\ref{sec:where}).
+  \item A width sweep from $64$ to $4096$ shows width buys dimensions, not
+    accuracy. At the better of two learning rates, accuracy is $0.87$ at $d{=}64$
+    and $0.90$--$0.93$ from $d{=}128$ up, while the code's participation ratio
+    grows from $8$ to $50$ ($7$ to $42$ after split-half noise correction), about
+    $d^{0.45}$, and the shared-cue tail is width-invariant. The registered sweep
+    at a single learning rate had read the rate limit as a capacity limit
+    (\S\ref{sec:cross}).
+  \item Two interventions bound the tail. An interference penalty, priced by
+    co-activation or uniformly, spreads the bulk to the null level (ratio
+    $0.96$--$0.97$) and lowers the tail by about $2\degr$ without removing it
+    (\S\ref{sec:price}); readout deletion of the code's top directions is
+    directional but a registered fairness check failed, every corpus-informed basis
+    coincides with the shared one, and no mechanism is named (\S\ref{sec:ablate}).
+\end{enumerate}
+The design, endpoints, and decision rules of every run were written down before
+execution (Appendix~\ref{app:prereg}). Pre-registered are the capacity endpoints,
+the fairness check, the width sweep, and the rank-mixed corpus. Post-hoc are the
+decomposition, the nulls, the initialization baselines, and the centering
+identity, each labeled as such. Two estimator pitfalls we hit are stated as
+results (\S\ref{sec:simplex}, \S\ref{sec:cross}): per-word centering forces the
+same-word cosine to $-1/(k{-}1)$, and an isotropic null in $\mathbb{R}^d$ misreads
+low dimensionality as failed packing.
+
+\section{Setup}\label{sec:setup}
+
+\paragraph{Language.} $W$ ambiguous words, each with $k$ senses at Zipf frequencies
+$P(r)\propto 1/r$. Sentences are $2$--$4$ chunks of \texttt{cue word [cont] filler};
+exactly one chunk is the \emph{main} slot and carries a continuation token
+\texttt{cont}$_{w,r}$ determined by (cue, word) and by nothing less: the cue alone leaves
+$8$--$20$ candidates, the word alone leaves $k$. One word appears at most once per
+sentence, so same-word senses never co-activate. Cues are drawn from pools indexed by
+(block, rank); senses in the same block and rank share a pool of $4$ cues, so cross-word
+co-activation structure is set by the block assignment. At the capacity scale,
+$W{=}2000$, $k{=}5$ ($S{=}10^4$), $500$ blocks, $96{,}000$ sentences, vocabulary
+$14{,}082$; blocks are rank-pure by construction, so every shared-cue pair is same-rank.
+A $10\%$ held-out split is used for behavior. Structural checks (Zipf recovery, zero
+  same-word co-occurrence, deterministic (cue, word)$\to$cont, no duplicates or split
+leakage, prior-only ceiling $0.438$) are in Appendix~\ref{app:corpus}.
+
+\paragraph{Model.} One block: single-head causal attention, ReLU MLP ($4d$), untied
+embedding/unembedding, no biases, \emph{no LayerNorm} (so AdamW~\citep{loshchilov2019decoupled}
+  weight decay $\gamma$ keeps the semantics of \citet{liu2025superposition}'s superposition
+knob), \emph{no
+positional code} (chunk order carries no signal). Loss is masked to continuation
+positions. $d{=}64$ for the toy regime ($W{=}12$, $k{=}4$, 2500 steps, 5 seeds per
+configuration); $d{=}4096$ ($317$M parameters) for the capacity regime, 6000 steps, batch
+256, lr $10^{-4}$, on one 8~GB consumer GPU (Appendix~\ref{app:amend} lists the numerics
+amendments and their bitwise or bounded-delta gates).
+
+\paragraph{Intervention.} $\lambda>0$ adds $\lambda\,\overline{\cos^2}$ between residual
+vectors at prediction positions whose targets belong to \emph{different} words; same-word
+pairs are excluded so the penalty never fights the simplex. Under \texttt{coact} pricing,
+pairs enter at their empirical batch co-activation rate; under \texttt{uniform},
+inverse-frequency weights $1/(f_if_j)$ make every cross-word pair type's expected price
+equal, so rare shared-cue pairs are priced directly. Penalty statistics are always fp32.
+
+\paragraph{Measurement.} Sense vectors are residual-stream activations at the prediction
+position. Per-word centering precedes every angle (raw cosines are dominated by
+  anisotropy and token identity~\citep{ethayarajh2019contextual};
+\citet{hou2026polysemanticity} show the same lexical confound in production models).
+Same-word geometry is classified by the pre-registered rule on the median cross-sense
+cosine ($<-0.15$ simplex, $|x|\le0.15$ orthogonal, $>0.15$ collapsed; now shown
+ill-posed, \S\ref{sec:simplex}). Split-half
+reliability of centroids is reported per rank as the denominator for every geometric
+claim. Cross-word interference is $\sum_{i<j}\cos^2(v_i,v_j)P(i,j)$ with $P$ the
+full-corpus co-occurrence. Packing is measured on per-word-centered normalized centroids
+as angular deviation from $90\degr$ against a matched random baseline (same $n$, $d$;
+unit Gaussian directions), on a log-spaced $\pm4\degr$--$10\degr$ violation grid; no
+bound constant was pre-committed; the SGD-vs-random gap is the quantity. Geometry uses
+the full corpus (at $48$ sentences/word the test split leaves $<1$ vector for rare
+senses); behavior is held-out.
+
+\section{Toy regime: the knobs work, and the rare senses merge}\label{sec:toy}
+
+At $d{=}64$ (Appendix Table~\ref{tab:toy}, Figure~\ref{fig:simplex}) weight decay is
+inert to $\gamma{=}1$, opens a graded window at $\gamma\in[1.5,3]$ where accuracy holds
+and interference \emph{rises} $0.32\to0.42$ as decay removes weakly supported directions
+first, and kills the model at $\gamma{=}4$. The two rarest senses of each word merge:
+$r_3$--$r_4$ is the least-negative of six pairs in $23/25$ healthy runs (null $1/6$),
+with a dose response $-0.05\to+0.13$ while the other pairs sharpen to $-0.41$. The
+cross-word penalty abolishes the merge ($0/5$ runs at $\lambda\in\{1,3\}$) while cutting
+interference $0.32\to0.25\to0.19$ at constant accuracy; $\gamma$ paid $3$ points at
+$\gamma{=}3$. A structural fact limits how far toy behavior can be read: with no positional
+code and one layer the output depends only on the multiset of prefix tokens, and in
+$17\%$ of toy sentences a distractor cue forms a valid pair with the target word, so toy
+accuracy ($0.91$) sits at the order-blind ceiling ($0.917$) and toy per-rank behavior is
+meaningful between arms, not absolutely. At capacity scale the rate is $0.62\%$ and the
+endpoints are clean (Appendix~\ref{app:corpus}).
+
+
+\begin{figure}[t]
+  \centering
+  \begin{tikzpicture}[trim axis left,trim axis right]
+    \begin{axis}[scale only axis,width=8.2cm,height=3.6cm,xlabel={weight decay $\gamma$},
+        ylabel={mean same-word cosine},ymin=-0.55,ymax=0.45,xtick={0,1,1.5,2,3,4},
+        legend style={font=\scriptsize,at={(1.02,0.5)},anchor=west,draw=none},
+        grid=major,grid style={gray!20},
+        extra y ticks={-0.333},extra y tick labels={simplex},
+      extra y tick style={grid=none,tick label style={font=\scriptsize,gray}}]
+      \addplot+[red!80!black,mark=*,mark size=1.6pt,thick,error bars/.cd,y dir=both,y explicit]
+      table[x=gamma,y=r34,y error minus expr=\thisrow{r34}-\thisrow{r34lo},
+      y error plus expr=\thisrow{r34hi}-\thisrow{r34},col sep=comma]{data/toy_gamma.csv};
+      \addplot+[blue!70!black,mark=square*,mark size=1.6pt,thick,error bars/.cd,y
+      dir=both,y explicit]
+      table[x=gamma,y=oth,y error minus expr=\thisrow{oth}-\thisrow{othlo},
+      y error plus expr=\thisrow{othhi}-\thisrow{oth},col sep=comma]{data/toy_gamma.csv};
+      \addplot[gray,dashed,domain=0:4] {-0.333};
+      \legend{$r_3$--$r_4$ (rarest pair),other five pairs}
+    \end{axis}
+  \end{tikzpicture}\\[8pt]
+  \begin{tikzpicture}[trim axis group left,trim axis group right]
+    \begin{groupplot}[group style={group size=2 by 1,horizontal sep=2.2cm},scale only axis,
+        y dir=reverse,colormap/viridis,point meta min=-0.45,point meta max=0,axis on top,
+        tick style={draw=none},scatter/use mapped color={draw=none,fill=mapped color},
+      title style={font=\small,yshift=-2pt}]
+      \nextgroupplot[width=4cm,height=4cm,title={toy $d{=}64$, $k{=}4$},
+        xtick={1,...,4},ytick={1,...,4},xticklabels={$r_1$,$r_2$,$r_3$,$r_4$},
+      yticklabels={$r_1$,$r_2$,$r_3$,$r_4$},xmin=0.5,xmax=4.5,ymin=0.5,ymax=4.5]
+      \addplot[scatter,only marks,mark=square*,mark size=14.2pt,point meta=explicit,
+      discard if not={arm}{toy}] table[x=j,y=i,meta=cos,col sep=comma]{data/rankpair_matrix.csv};
+      \addplot[only marks,mark=none,cellabels=667,point meta=explicit,discard if not={arm}{toy}]
+      table[x=j,y=i,meta=cos,col sep=comma]{data/rankpair_matrix.csv};
+      \nextgroupplot[width=5cm,height=5cm,title={capacity $d{=}4096$, $k{=}5$},
+        xtick={1,...,5},ytick={1,...,5},xticklabels={$r_1$,$r_2$,$r_3$,$r_4$,$r_5$},
+        yticklabels={$r_1$,$r_2$,$r_3$,$r_4$,$r_5$},xmin=0.5,xmax=5.5,ymin=0.5,ymax=5.5,
+        colorbar,colorbar style={width=0.2cm,ytick={-0.4,-0.333,-0.25,-0.1,0},
+      yticklabels={$-0.4$,$-\tfrac13$,$-\tfrac14$,$-0.1$,$0$},tick label style={font=\scriptsize}}]
+      \addplot[scatter,only marks,mark=square*,mark size=14.2pt,point meta=explicit,
+      discard if not={arm}{capacity}] table[x=j,y=i,meta=cos,col
+      sep=comma]{data/rankpair_matrix.csv};
+      \addplot[only marks,mark=none,cellabels=667,point meta=explicit,discard if
+      not={arm}{capacity}]
+      table[x=j,y=i,meta=cos,col sep=comma]{data/rankpair_matrix.csv};
+    \end{groupplot}
+  \end{tikzpicture}
+  \caption{Same-word geometry. Top: toy dose response in $\gamma$; points are medians over
+    5 seeds, bars the seed range. The rarest pair drifts toward zero while the other five
+    sharpen. Bottom: mean rank-pair cosine at $\gamma{=}0$. The toy $r_3$--$r_4$ merge is the
+    one light cell ($-0.08$); at capacity every pair sits at the simplex value $-0.25$
+  (4 seeds, ranges $\le0.02$). Colorbar marks the $k{=}4$ and $k{=}5$ simplex values.}
+  \label{fig:simplex}
+\end{figure}
+
+\section{Capacity regime: $S{=}10^4$ senses in $d{=}4096$}
+
+\subsection{Same-word geometry: differentiation, and an estimator identity}\label{sec:simplex}
+
+The pre-registered rule classified the median per-word-centered same-word cosine,
+$<-0.15$ simplex, $|x|\le0.15$ orthogonal, $>0.15$ collapsed. The rule was ill-posed.
+Centering $k$ equal-norm equiangular vectors on their mean gives $-1/(k{-}1)$
+whatever the raw geometry, so the estimator prints $-0.25$ for $k{=}5$ whenever the
+senses are exchangeable in norm, and an untrained model gives $-0.249$. The measured
+$-0.250$ [$-0.250$, $-0.249$] over the four seeds is the identity, and
+Table~\ref{tab:cap} keeps the column as an identity check.
+
+What training does is differentiate the senses from the word component. The raw
+same-word cosine falls from $0.953$ at initialization to $0.527$ after training, and
+the per-word base-norm to sense-deviation-norm ratio falls from $4.90$ to $1.26$.
+The rank-pair matrix is graded at initialization ($-0.10$ at $r_1r_2$ to $-0.34$ at
+$r_4r_5$, a small-sample artifact of the rare-sense centroids) and uniform after
+training ($-0.23$ to $-0.29$, Figure~\ref{fig:simplex}), and the toy-scale
+$r_3$--$r_4$ merge is absent. Held-out accuracy $0.905$ [$0.900$, $0.910$], per-rank
+$0.98/0.95/0.86/0.76/0.64$ for $r_1..r_5$ with reliability
+$0.89/0.79/0.67/0.56/0.49$; $r_5$ centroids rest on $\sim4$ sentences per word.
+Weighted interference is $0.0235$.
+
+\begin{table}[t]
+  \centering\footnotesize
+  \setlength{\tabcolsep}{3pt}
+  \caption{Capacity regime. Each cell: median over runs, with the seed range beneath.
+    $\gamma{=}0$: 4 independent seeds plus a same-seed bf16 replicate (5 runs);
+    $\lambda{=}1$ coact: seed 0 in fp32 and bf16 (2 runs); $\lambda{=}1$ uniform:
+    1 run. The same-word cosine is the per-word-centered estimator, whose $-0.25$
+    value is the centering identity and an identity check, not evidence. Deviation is
+    the angular distance from $90\degr$ of cross-word centroid pairs
+    ($5.0\times10^7$ per run); viol is the registered endpoint, the fraction of
+    pairs outside $\pm4\degr$ (matched random code: $0.0000$ in every run). Null A
+    (isotropic code in $\mathbb{R}^d$, the paper's original baseline) gives
+    $0.60\degr$ / $2.94\degr$ / $5.2\degr$ (p50 / p99.9 / max), and null B
+    (spectrum-matched) gives p50 $5.36\degr$--$5.51\degr$, p99.9
+  $25.8\degr$--$26.8\degr$ for $\gamma{=}0$.}
+  \label{tab:cap}
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabular}{@{}lccccccc@{}}
+    \toprule
+    arm & acc & same-word cos & interf. & viol $\pm4\degr$ & p50 & p99.9 & max \\
+    \midrule
+    $\gamma{=}0$ & \mr{0.905}{0.900}{0.910} & \mr{$-0.250$}{$-0.250$}{$-0.249$}
+    & \mr{0.0235}{0.0234}{0.0257} & \mr{0.620}{0.619}{0.633} & \mr{$5.44\degr$}{5.41}{5.65} & \mr{$54.6\degr$}{54.2}{54.8}
+    & \mr{$73\degr$}{73}{74} \\
+    \addlinespace
+    $\lambda{=}1$ coact & \mr{0.910}{0.904}{0.915} & \mr{$-0.250$}{$-0.250$}{$-0.249$}
+    & \mr{0.0153}{0.0147}{0.0158} & \mr{0.532}{0.525}{0.539} & \mr{$4.32\degr$}{4.24}{4.39} & \mr{$52.9\degr$}{52.8}{53.0}
+    & \mr{$72\degr$}{72}{72} \\
+    \addlinespace
+    $\lambda{=}1$ uniform & 0.908 & $-0.248$ & 0.0150 & 0.521 & $4.21\degr$ & $52.5\degr$ & $71\degr$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Cross-word packing: fifty effective dimensions, and a tail}\label{sec:cross}
+
+The frame-operator spectrum~\citep{ivanov2026spectral} of the per-word-centered
+sense centroids has participation ratio (PR) $46$--$50$ of $4096$ after training,
+down from $383$ at initialization. A Gaussian code of the same shape gives $2905$.
+The top $16$ eigen-directions carry $45$--$47\%$ of the variance
+(Appendix Table~\ref{tab:frame}). Both PR values are upper bounds: centroid
+sampling noise pushes PR toward the Gaussian value, and it does so more at
+initialization. The compression is therefore at least severalfold, and its exact
+factor is not measured. The registered comparison was to an
+isotropic code in $\mathbb{R}^d$ (null A) on a $\pm4\degr$ violation grid, and SGD
+fails it outright, $0.62$ of cross-word pairs outside $\pm4\degr$ against $0.00$
+for the matched random code (Table~\ref{tab:cap}). That comparison was the wrong
+one. Isotropic vectors in $46$--$50$ dimensions predict a median deviation of
+$5.47\degr$--$5.68\degr$, and the observed p50 is $5.41\degr$--$5.65\degr$. A
+spectrum-matched Gaussian null (null B, $N(0,\Sigma)$ with the empirical centroid
+covariance, normalized; post-hoc) gives p50 $5.36\degr$--$5.51\degr$. This match
+is expected for any code with that covariance, since the median pairwise cosine
+is pinned by the second moments; it says that the bulk carries no structure
+beyond its dimensionality, not that dimensionality was discovered
+(Appendix Table~\ref{tab:nulls}).
+
+The tail carries structure. The observed p99.9 is $54.2\degr$--$54.8\degr$
+against $25.8\degr$--$26.8\degr$ for null B, and the maximum is
+$73\degr$--$74\degr$ against $42\degr$--$45\degr$ (Appendix Table~\ref{tab:nulls} and
+Figure~\ref{fig:hist}). Shared-cue pairs are $0.19\%$ of all pairs and p99.9 cuts
+at $0.1\%$, so p99.9 is a quantile inside the shared-cue population and its
+value is set by that population's size as much as by its geometry; \S\ref{sec:where}
+measures the population directly. Word-cluster bootstrap CIs ($B{=}1000$) are
+$\pm0.03\degr$ at p50 and $\pm0.3\degr$ at p99.9, inside the seed spread; a
+delete-one-block jackknife gives $\pm0.1\degr$ and $\pm1\degr$, comparable to it.
+
+\paragraph{Width buys dimensions, not accuracy.} The registered sweep held the
+corpus, steps and learning rate ($10^{-4}$, tuned at $d{=}4096$) fixed at
+$d{=}512$--$4096$ (seed 0, bf16; registered 2026-09-02) and found accuracy rising
+from $0.722$ to $0.908$. That trend was the learning rate. Extending the sweep down
+to $d{=}64$ (registered 2026-09-05, three seeds) the small models did not learn at
+$10^{-4}$, and at the toy-arm rate $10^{-3}$ they reach $0.872$ at $d{=}64$ and
+$0.908$--$0.935$ at $d{=}128$--$256$, above the $d{=}4096$ model. Re-running the
+registered widths at $10^{-3}$ lifts $d{=}512$ to $0.902$ and $d{=}1024$ to
+$0.815$ and diverges at $d{=}2048$, and $3\times10^{-4}$ lowers $d{=}4096$ to
+$0.867$; the optimal rate falls with width. Taking the better of the rates tried,
+accuracy is $0.87$ at $d{=}64$ and $0.90$--$0.93$ from $d{=}128$ up
+(Figure~\ref{fig:width}, left; $d{=}1024$ had neither rate near optimum). The
+task saturates at about $0.9$ with $128$ dimensions.
+
+The code does not saturate. Its participation ratio is $8$ at $d{=}64$, $10$ at
+$128$, $16$ at $256$ and $50$ at $4096$, about $d^{0.45}$. Noise does not explain
+the growth: splitting each sense's sentences in two and taking the cross-half
+covariance, which is unbiased for the signal, gives signal PR $7.4$ / $9.8$ /
+$15.5$ / $22.9$ / $42.1$ at $d{=}64$ / $128$ / $256$ / $512$ / $4096$, with noise
+$9$--$32\%$ of the trace (Figure~\ref{fig:width}, right; the $1024$ and $2048$
+points, $33$ and $26$, come from the two runs where neither rate was near optimum). So SGD
+spends about seven dimensions on the within-word code when it has $64$ and about
+forty when it has $4096$, for the same accuracy. The cross-word bulk tracks the
+spectrum-matched null at every width (p50 $15.5\degr$ against $14.8\degr$ at
+$d{=}64$, $5.44\degr$ against $5.37\degr$ at $4096$), and the shared-cue tail is
+width-invariant (median $68\degr$--$73\degr$ at $d{=}64$--$256$, $55\degr$ at
+$4096$; p99.9 $55\degr$--$73\degr$) while the null's tail falls as PR grows. The
+registered predictions for the low-width sweep, spread / squash-and-collapse /
+drop the rare senses, all failed; the model squashes and succeeds.
+
+\begin{figure}[t]
+  \centering
+  \begin{tikzpicture}[trim axis group left,trim axis group right]
+    \begin{groupplot}[group style={group size=2 by 1,horizontal sep=1.6cm},scale only axis,
+        width=4.6cm,height=4.2cm,xmode=log,grid=major,grid style={gray!20},
+      legend style={font=\scriptsize,draw=none}]
+      \nextgroupplot[xlabel={width $d$},ylabel={held-out accuracy},xmin=50,xmax=5800,
+      xtick={64,256,1024,4096},xticklabels={64,256,1024,4096},ymin=0,ymax=1.02,legend pos=south east]
+      \addplot+[mark=*,mark size=1.4pt,thick,black]
+      table[x=d,y=acc_best,col sep=comma]{data/width.csv};
+      \addplot+[mark=square*,mark size=1.4pt,thick,gray,dashed]
+      table[x=d,y=acc_lr1e4,col sep=comma]{data/width.csv};
+      \addplot+[mark=triangle*,mark size=1.4pt,thick,blue!70!black,dashed]
+      table[x=d,y=acc_lr1e3,col sep=comma]{data/width.csv};
+      \legend{best of rates,lr $10^{-4}$,lr $10^{-3}$}
+      \nextgroupplot[xlabel={width $d$},ylabel={participation ratio},ymode=log,
+        xmin=50,xmax=5800,xtick={64,256,1024,4096},xticklabels={64,256,1024,4096},ymin=4,ymax=8000,
+      legend pos=north west,unbounded coords=jump]
+      \addplot+[mark=none,thin,gray] coordinates {(50,50) (5800,5800)};
+      \addplot+[mark=*,mark size=1.4pt,thick,black] table[x=d,y=pr,col sep=comma]{data/width.csv};
+      \addplot+[mark=square*,mark size=1.6pt,thick,red!80!black,only marks]
+      table[x=d,y=pr_signal,col sep=comma]{data/width.csv};
+      \legend{PR $=d$,PR (raw),PR (signal; split-half)}
+    \end{groupplot}
+  \end{tikzpicture}
+  \caption{Width sweep, seed 0, bf16, same corpus and steps. Left, held-out accuracy
+    at each of the learning rates tried and the better of them; the registered sweep
+    (lr $10^{-4}$, $d\ge512$) was rate-limited. Right, participation ratio of the
+    within-word code, raw and noise-corrected by split-half cross-covariance,
+  against the width. The code grows about as $d^{0.45}$ while accuracy is flat.}
+  \label{fig:width}
+\end{figure}
+
+\subsection{Where the tail lives: inherited cue structure, not co-occurrence}\label{sec:where}
+
+This decomposition was not pre-registered, and it replicates in every run. Pairs
+that co-occur in sentences ($317{,}619$, $0.64\%$) are not enriched in the tail
+(mean deviation $7.0\degr$ vs $6.5\degr$). Pairs whose senses were trained under a
+common cue ($94{,}328$, $0.19\%$) have median deviation $55.4\degr$
+[$55.1$, $55.6$] ($|\cos|\approx0.82$) and
+$P(\text{dev}>21\degr\mid\text{shared})=1.000$ against $0.0067$ for cue-disjoint
+pairs. Deviation is graded in cue-set Jaccard, $43\degr$, $48\degr$, $53\degr$,
+$62\degr$ across the four bins (Figure~\ref{fig:jac}), with seed ranges within
+$0.6\degr$. Context-disjoint pairs sit at the bulk, median $5.43\degr$, p99.9
+$25.2\degr$. By count the disjoint population still holds most pairs above
+$21\degr$ ($3.3\times10^5$ against $9.4\times10^4$); cue sharing owns the extreme
+tail, not every pair beyond the bulk.
+
+\paragraph{The alignment is present before training.} A one-layer model with no
+positional code sums the prefix embeddings into the residual, so two senses trained
+under the same cue pool share a cue-embedding component whatever the weights. We
+measured the same decomposition on the untrained model (seed 0, same corpus;
+post-hoc, Table~\ref{tab:init}). Shared-cue pairs already deviate $17.2\degr$ at
+initialization against $1.64\degr$ for disjoint pairs, graded in Jaccard
+$7.7\degr$, $11.7\degr$, $15.8\degr$, $21.1\degr$. After training the two
+populations sit at $53.5\degr$ and $5.55\degr$. The ratio is $10.5\times$ before
+training and $9.6\times$ after. The pattern, which pairs align and how the
+alignment grades with cue overlap, is set by the input; training raises its
+magnitude, shared-cue $|\cos|$ from $0.29$ to $0.80$, at the same time as it
+compresses the code (PR $383$ to $48$) and raises the disjoint bulk in step. SGD
+does not originate this structure and does not remove it; the mechanism, cue
+embeddings summed into the residual, is inferred from the architecture and not
+isolated by an intervention (\S\ref{sec:limits}).
+
+\paragraph{Rank-mixed control.} In the main corpus every shared-cue pair is
+same-rank, since the cue pools are indexed by (block, rank). We registered a
+control that breaks this, one cue pool per block shared by all its ranks, $499$
+blocks of about $20$ mixed-rank senses, so a cue token carries no rank information
+(verified, $0.61\%$ conflicts, no leakage; registered 2026-09-02,
+Table~\ref{tab:mixed}). Shared-cue pairs deviate $50.1\degr$--$50.6\degr$,
+disjoint pairs $4.76\degr$--$4.77\degr$, $P(\text{dev}>21\degr)=1.000$ shared
+against $0.0028$--$0.0030$ disjoint, and null B p99.9 is $23.2\degr$ against
+observed $49.6\degr$--$50.1\degr$. Accuracy is $0.909$--$0.915$, the same as the
+main corpus. Within the mixed corpus, same-rank shared pairs sit at $54.2\degr$
+and cross-rank shared pairs at $48.5\degr$ (seed 0; $17.2\degr$ and $14.8\degr$
+at initialization), so frequency rank adds about $5\degr$, cue identity carries
+the rest, and the rank component is present at initialization too; that $5\degr$
+is the gap between the two corpora. The
+registered rule had two parts. Part (a), alignment survives, is met. Part (b),
+that the rank-mean subspace separates from the shared-cue subspace at $k{=}1$
+(cos $<0.7$), failed (cos $1.000$). We read the failure as a property of the basis
+construction, since PCA of pair means puts the frequency axis first in any corpus
+whose pairs differ in rank composition, but that reading is post hoc and the rule
+as registered was not passed (Appendix~\ref{app:prereg}).
+
+\begin{table}[t]
+  \centering\footnotesize
+  \caption{Shared-cue alignment before and after training (seed 0, post-hoc,
+    \texttt{nulls.py}). Medians in degrees; PR is the participation ratio of the
+    protocol centroids; Jaccard bins are the four cue-overlap bins of
+    Figure~\ref{fig:jac}. This is a separate capture (training rows, fp32 forward,
+    words with a missing sense dropped), so its trained values sit about $2\degr$
+    below the main pipeline's ($55.4\degr$, Table~\ref{tab:mixed}); the
+    init-to-trained comparison is within one pipeline.}
+  \label{tab:init}
+  \renewcommand{\arraystretch}{1.1}
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{@{}lcccccc@{}}
+    \toprule
+    & PR & shared & disjoint & ratio & $P(\text{dev}{>}21\degr)$ & Jaccard bins \\
+    \midrule
+    main, init & 383 & 17.2 & 1.64 & 10.5 & 0.306 & 7.7 / 11.7 / 15.8 / 21.1 \\
+    main, trained & 48 & 53.5 & 5.55 & 9.6 & 0.997 & 41.2 / 45.6 / 50.9 / 59.7 \\
+    mixed, init & 396 & 15.1 & 1.63 & 9.3 & 0.179 & 7.7 / 11.9 / 14.7 / 18.4 \\
+    mixed, trained & 62 & 49.2 & 4.76 & 10.3 & 0.998 & 43.4 / 45.9 / 48.5 / 53.3 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[t]
+  \centering\footnotesize
+  \caption{Rank-mixed cue pools, one pool per block of about $20$ mixed-rank senses,
+    so a cue token carries no rank information. $\gamma{=}0$, bf16, 3 seeds,
+  registered 2026-09-02.}
+  \label{tab:mixed}
+  \renewcommand{\arraystretch}{1.1}
+  \setlength{\tabcolsep}{3.4pt}
+  \begin{tabular}{@{}lcccccccc@{}}
+    \toprule
+    seed & acc & PR & p50 & p99.9 & null B p99.9 & shared med & disjoint med &
+    \makecell{$P(\text{dev}{>}21\degr)$\\shared / disjoint} \\
+    \midrule
+    0 & 0.909 & 62 & 4.78 & 50.1 & 23.2 & 50.6 & 4.77 & 1.000 / 0.0030 \\
+    1 & 0.915 & 62 & 4.77 & 49.6 & 23.2 & 50.1 & 4.76 & 1.000 / 0.0028 \\
+    2 & 0.915 & 62 & 4.77 & 49.7 & 23.2 & 50.2 & 4.76 & 1.000 / 0.0029 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \begin{tikzpicture}[trim axis left,trim axis right]
+    \begin{axis}[width=0.5\textwidth,height=0.36\textwidth,xlabel={cue-set Jaccard (bin
+        upper edge)},ylabel={deviation (degrees)},
+        ymin=35,ymax=70,xtick={0.25,0.5,0.75,1},legend pos=north west,legend
+      style={font=\scriptsize},grid=major,grid style={gray!20}]
+      \addplot+[only marks,mark=*,mark size=1.6pt,black] table[x=bin,y=med,col
+      sep=comma]{data/jaccard.csv};
+      \addplot+[only marks,mark=o,mark size=1.6pt,gray] table[x=bin,y=p90,col
+      sep=comma]{data/jaccard.csv};
+      \legend{median,p90}
+    \end{axis}
+  \end{tikzpicture}
+  \caption{Shared-cue pair deviation against cue-set overlap, four $\gamma{=}0$ seeds
+    overlaid (bin counts $5985/18448/26993/42902$). Alignment is monotone in
+  shared-context fraction.}
+  \label{fig:jac}
+\end{figure}
+
+\subsection{Pricing interference does not remove it}\label{sec:price}
+
+$\lambda{=}1$ raises the centroid participation ratio $46$--$50$ to $72$--$77$
+(top-16 share $45$--$47\%$ to $33$--$35\%$) while \emph{lowering} the unembedding's
+from $1847$--$1865$ to $1424$--$1500$. It spreads the targets and concentrates the
+reader. It lowers the bulk, p50 $5.41\degr$--$5.65\degr$ to $4.21\degr$--$4.39\degr$,
+and null B falls with it, $5.36\degr$--$5.51\degr$ to $4.38\degr$--$4.52\degr$,
+ratio to null B $0.96$--$0.97$, so the bulk carries no structure beyond its
+dimensionality under the penalty as it does without. The tail moves a little and
+stays. In absolute terms the shared-cue median goes from $55.4\degr$ to
+$53.3\degr$--$53.6\degr$, p99.9 from $54.6\degr$ to $52.5\degr$--$53.0\degr$, the
+maximum from $73\degr$ to $71\degr$--$72\degr$, and each Jaccard bin drops about
+$2\degr$; $P(\text{dev}>21\degr\mid\text{shared})$ is still $1.000$ under
+co-activation pricing and $0.999$ under uniform pricing, while the disjoint
+$21\degr$ tail falls $0.0067$ to $0.0009$--$0.0010$. The ratio of p99.9 to null B
+rises from $2.0$--$2.1\times$ to $2.4$--$2.5\times$ only because the null fell with
+the bulk, so we do not read it as a strengthening. Weighted interference falls
+$0.0235$ to $0.0150$--$0.0153$, a $35\%$ drop at the medians, and held-out
+accuracy $0.904$--$0.915$ sits inside the $\gamma{=}0$ range $0.900$--$0.910$;
+with one seed per pricing this rules out a large cost, not a small one. Under
+co-activation pricing the tail's survival is expected, shared-cue pairs rarely
+co-occur and are cheap. Uniform pricing charges every pair type the same expected
+price, and the shared-cue median still moves only to $53.3\degr$. Given
+\S\ref{sec:where}, this is the inherited cue structure resisting a penalty of this
+size, not evidence that the task needs it; the registered ``load-bearing''
+criterion is met in letter and we no longer draw its conclusion.
+
+\subsection{Readout deletion, and what the fairness check showed}\label{sec:ablate}
+
+From training rows only, each shared-cue pair contributes its normalized pair mean,
+and PCA of these gives the shared-cue subspace. Held-out behavior is re-evaluated
+with the projection onto the top-$k$ directions removed from every residual before
+the unembedding. The registered predictions held where they should: rare-rank
+accuracy degrades with $k$ (P1), r5 from $0.62$--$0.66$ to $0.35$--$0.41$ at
+$k{=}16$ while r1 improves $0.983$ to $0.991$; the centered same-word cosine is
+unchanged (P3, the identity either way); P2 split, the generic top-PCA also hurt the
+rare ranks; a random $32$-dimensional subspace changes nothing. The fairness check
+(registered 2026-09-02, Table~\ref{tab:fair}; Appendix Figure~\ref{fig:abl}) then
+failed its rule in all five checkpoints. The rank basis at $k{=}1$ is the shared-cue
+direction (cos $0.999$--$1.000$, identical damage); the cue basis coincides with the
+shared subspace from $k{\ge}4$ (cos $0.98$--$0.99$), the generic PCA from $k{\ge}8$
+($0.95$--$0.99$), the rare-centroid basis from $k{\ge}16$ ($0.94$--$0.99$), with
+damage within the seed spread in each case. The FAIL branch was honored and the
+initial reading, an aligned subspace set apart as a channel of disambiguation, is
+retracted.
+
+\begin{table}[t]
+  \centering\footnotesize
+  \caption{Deletion-fairness controls, $\gamma{=}0$ seed 0, r5 held-out accuracy
+    after deleting $k$ directions, with the median principal-angle cosine to the
+    shared-cue basis at the same $k$. \texttt{rank} spans the 5 per-rank means.
+    \texttt{cue} is the PCA of per-cue-token means. \texttt{randvar} is a random
+    subspace of $k'$ columns matched to shared-$k{=}16$'s removed variance. All
+  five checkpoints in Appendix Table~\ref{tab:fairall}.}
+  \label{tab:fair}
+  \renewcommand{\arraystretch}{1.1}
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    basis & $k$ & r5 & $\cos$ to shared \\
+    \midrule
+    baseline & 0 & 0.617 & --- \\
+    shared & 1 & 0.586 & --- \\
+    rank & 1 & 0.588 & \textbf{1.000} \\
+    shared & 2 & 0.483 & --- \\
+    rank & 2 & 0.485 & 0.972 \\
+    shared & 16 & 0.353 & --- \\
+    cue & 16 & 0.333 & \textbf{0.994} \\
+    randvar & 1656 & 0.582 & --- \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+
+What survives is directional and weak. Deleting the top-variance directions hurts
+the rare senses more than a variance-matched random subspace, r5 $0.35$--$0.41$
+after $16$ shared directions against $0.58$--$0.63$ after removing the same
+variance from $1018$--$1670$ random directions, and the rank-mixed corpus shows the
+same gap (at $39.5\%$ removed variance, acc $0.877$ shared against $0.900$
+random). But $16$ directions inside a $50$-dimensional code and $1600$ directions
+in $4096$ are different operations, every corpus-informed basis coincides once $k$
+is large enough, and deleting $k{=}1$ alone is seed-inconsistent on r5 ($+0.03$,
+$-0.035$, $-0.02$). No basis is identified and no mechanism is named.
+
+\section{Related work}
+
+\citet{elhage2022toy} and \citet{scherlis2022polysemanticity} give the packing
+vocabulary and the capacity-allocation law. For independent sparse features their
+saturation objects are tight frames, and their treatment of correlated features
+allows collapse or alignment, which is the regime of same-word senses and of
+shared-cue pairs here. \citet{lecomte2023incidental} propose
+polysemanticity from initialization and dynamics; our shared-cue alignment is
+present at initialization and preserved by training, which is a different
+mechanism, the input embedding rather than dynamics.
+\citet{liu2025superposition} make weight decay the superposition knob and place
+production models in the strong-superposition regime; our $\gamma$ window replicates
+the qualitative effect in a one-layer language model, and $\lambda$ is a knob they
+lack. \citet{ivanov2026spectral} prove that capacity saturation forces tight frames in
+toy models with independent features. Our features are correlated and our model is
+not shown to saturate, so their theorem is not what we test; what we observe is that
+SGD moves away from the Gaussian spectrum toward a code of PR $46$--$50$, about $1.2\%$
+of the width, and that the per-word-centered cosine that reads as a simplex is an
+identity of the estimator.
+\citet{garg2026features} bound how many features linear readout admits, with
+near-orthogonal random constructions achieving the upper bound; our setting
+complements the bound, and SGD does not land on the extremal construction.
+\citet{bereska2025lossy} measure effective features via
+sparse-autoencoder (SAE) entropy; we
+measure them from labelled senses without a dictionary. \citet{svozil2025quasi} states
+the near-orthogonality capacity and readout-interference limit for polysemy conceptually;
+this is the empirical test. Prior work measures polysemy geometry in trained
+models directly. \citet{arora2018linear} model senses as sparse atoms.
+\citet{coenen2019visualizing} and \citet{ethayarajh2019contextual} measure
+BERT-family geometry and anisotropy, which is why we center per word.
+\citet{minegishi2025pseval} locate disentanglement in depth, not in a variable at one
+layer. \citet{engels2025notlinear} find non-linear features, and our linear readout
+deletion fails to name a basis (\S\ref{sec:ablate}), which a code that is not
+linearly separable into named parts would produce.
+\citet{hou2026polysemanticity} identify the lexical-identity confound that per-word
+centering removes by construction. On
+interventions, \citet{miller2026isolated} regularize an SAE dictionary toward orthogonality
+for isolated interventions; we regularize the model's residuals during training and find a
+population the regularizer cannot flatten. \citet{jermyn2022engineering} engineer
+monosemanticity in toy models. \citet{duan2026perplexity} audits feature survival under
+quantization; we do not.
+
+The delta, relative to \citet{ivanov2026spectral} and \citet{elhage2022toy}, is the
+object and the regime. Their predictions concern independent sparse features at
+saturation; here a next-token model is trained on a language with correlated,
+Zipf-distributed senses whose inventory exceeds the width, and the question is what
+SGD does with the near-orthogonal headroom it has. It compresses the code to about
+$1\%$ of the width, the low-rank bias of gradient
+training~\citep{papyan2020collapse,ansuini2019intrinsic,huh2023lowrank} seen in a
+setting where the feature inventory is known, and the only structure in the code
+beyond its dimensionality is one the input embeddings already contain, which
+training amplifies and a pricing penalty does not remove. We know of no prior next-token experiment with a known
+sense inventory exceeding the width and known co-activation, which is the delta
+here; \citet{elhage2022toy} and \citet{scherlis2022polysemanticity} test correlated
+features in autoencoders.
+
+\section{Limitations}\label{sec:limits}
+
+One layer, one head, no positional code, one architecture, one machine, one author.
+The prefix is a bag, which at toy width produces a $17\%$ order-blind conflict rate
+(\S\ref{sec:toy}) and at capacity $0.6\%$. The pre-registered three-way rule on the
+per-word-centered cosine was ill-posed, since the centering forces $-1/(k{-}1)$ for
+exchangeable senses; the $-0.25$ values in the tables are identity checks. The
+initialization baseline of \S\ref{sec:where} is one seed on each corpus and was run
+after the second review round; the mechanism it points to, cue embeddings summed
+into the residual, is inferred from the architecture and not isolated by an
+intervention such as ablating the cue tokens' attention contribution. The shared-cue
+subspace is a PCA of pair means, which puts the frequency axis first in any corpus;
+part (b) of the rank-mixed rule failed and our reading of that failure is post hoc.
+The main corpus has rank-pure cue pools; the rank-mixed corpus (three seeds, one
+block count) is the mitigation. Geometry is measured on seen data, and $r_4$, $r_5$
+centroids have split-half reliability $0.56$, $0.49$, so their noise inflates PR
+toward the Gaussian value and $46$--$50$ is an upper bound on the code. The
+$\lambda$ arms are single-seed. The width sweep tried two learning rates per width
+(three at $d{=}4096$), not a tuned schedule, so the $d{=}1024$ accuracy is low for
+that reason and the split-half PR is one seed per width. The decomposition of \S\ref{sec:where} and the nulls of
+\S\ref{sec:cross} were not pre-registered; replication across all runs is the
+mitigation. None of this transfers to production models by itself.
+
+\section{Conclusion}
+
+When senses outnumber dimensions, SGD spends the width on accuracy and compresses
+the code to $46$--$50$ of $4096$ effective dimensions; the bulk of the code's
+non-orthogonality is that dimensionality. The far tail is the cue structure of the
+input, aligned before training and amplified by it in proportion to the bulk, with
+most of it on cue identity and about $5\degr$ on frequency rank. Width buys
+dimensions the task does not use, the code growing as $d^{0.45}$ at constant
+accuracy, and leaves the tail flat; interference pricing spreads the bulk and
+lowers the tail by $2\degr$; readout deletion identifies no basis. Every failed rule is reported.
+The near-orthogonal headroom the capacity argument makes available is left unused,
+and nothing in the code beyond its dimensionality originates in training.
+
+\paragraph{Reproducibility and AI use.} Code, corpus generator, pre-registration text,
+run logs, saved centroids and the table-generation script are at
+\url{https://github.com/negoro26/simplex-not-orthogonal}; every table cell comes from
+\texttt{stats.py} on the saved artifacts, and Appendix~\ref{app:prereg} dates each
+registered item (the repository is a snapshot, so the dates are the author's record). A
+capacity run takes $\approx15$ minutes on an 8~GB RTX~5060 laptop GPU\@. An AI coding
+assistant (Claude, Anthropic) was used under the author's direction for implementation,
+analysis scripting, literature search and drafting; the author verified every number,
+citation and claim.
+
+\bibliography{refs}
+\bibliographystyle{iclr2027_conference}
+
+\appendix
+\section{Pre-registration ledger}\label{app:prereg}
+\begin{table}[h]
+  \centering\scriptsize
+  \caption{Registered items, date written down, outcome. Full text in
+  \texttt{DISCOVERY.md} and the \texttt{ablate.py} header.}
+  \begin{tabular}{p{6.6cm}p{1.6cm}p{4.2cm}}
+    \toprule
+    item & registered & outcome \\
+    \midrule
+    Toy protocol: decision rule ($\pm0.15$), per-word centering, $\ge5$ seeds, no LayerNorm,
+    untied embeddings & 2026-08-22 & held throughout \\
+    Arm-5 design: corpus, $d{=}4096$, endpoints 1--4, $\varepsilon$-grid, matched-random
+    baseline & 2026-08-22 & run as registered \\
+    Amendments 1--6 (numerics; Appendix~\ref{app:amend}) & 08-22 to 09-02 & each gated
+    before use \\
+    Capture deviation: geometry on full corpus, behavior held-out & 2026-08-23 & stated
+    in \S\ref{sec:setup} \\
+    $\lambda$ arm at capacity (coact) & 2026-08-23 & $-35\%$ interference
+    (medians); shared-cue median $55.4\degr\to53.6\degr$ \\
+    Uniform-pricing fork: ``unpriced'' vs ``load-bearing'' criterion & 2026-08-24 &
+    alignment survives \\
+    Readout ablation P1--P3 & 2026-08-24 & P1, P3 confirmed; P2 split \\
+    Fairness controls + PASS/FAIL/PARTIAL rule & 2026-09-02 & FAIL: rank
+    $k{=}1$ $\equiv$ shared $k{=}1$ in 5/5; set-apart channel reading retracted \\
+    Post-hoc (not registered): shared-cue / co-occurrence split, Jaccard dose-response &
+    2026-08-23 & replicated in all runs \\
+    Width sweep (same corpus and steps, $d{=}512$--$4096$, seed 0, bf16) &
+    2026-09-02 & accuracy arm fired ($0.722$--$0.908$), later shown to be the
+    fixed learning rate; PR $13$--$50$; tail width-invariant \\
+    Low-width sweep $d\in\{64,128,256\}$, 3 seeds, predictions spread / squash /
+    drop, lr caveat & 2026-09-05 & none occurred: acc $0.87$--$0.93$, PR/$d$
+    $0.06$--$0.13$; caveat fired, $10^{-3}$ reruns count \\
+    Rival hypotheses for PR growth: split-half signal PR, lr-confound runs &
+    2026-09-05 & signal PR $7.4\to42$ ($5.7\times$, threshold $3\times$): growth is
+    real; noise $11$--$32\%$ of trace; accuracy flat at best-of-lr, ``capacity is
+    binding'' withdrawn \\
+    Rank-mixed cue pools (499 blocks, mixed-rank pools, 3 seeds) & 2026-09-02 &
+    part (a) met, alignment survives (shared $50.1\degr$--$50.6\degr$ vs
+    $4.8\degr$); part (b) failed (cos $1.000$), re-scored post hoc as a property of
+    the basis construction; rule as registered not passed \\
+    Post-hoc (not registered): centering identity, spectrum-matched null B,
+    isotropic-in-PR-dim prediction & 2026-09-02 & stated in \S\ref{sec:simplex}
+    and \S\ref{sec:cross} \\
+    Post-hoc (not registered): shared-cue alignment on the untrained model, both
+    corpora & 2026-09-05 & present at init ($17\degr$ vs $1.6\degr$), preserved in
+    ratio by training; ``SGD builds a context code'' withdrawn (\S\ref{sec:where}) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Fairness decision rule (paraphrased, registered before execution, full
+text in the \texttt{ablate.py} header).} PASS, at matched $k$ and matched removed
+variance, shared's $r_5/r_4$ damage exceeds every control by more than the
+$\gamma{=}0$ seed spread, and median
+$\cos(\text{shared},\text{rank}\mid\text{cue})$ at $k{=}16$ is $<0.7$. FAIL, the
+rank or cue basis reproduces the shared damage curve within seed noise, stop, do not
+run the planned penalty-concentration retrains, reframe as ``SGD builds a shared
+context code instead of an orthogonal code''. PARTIAL, shared beats rank/cue on
+$r_5$ but overlaps them ($\cos\ge0.7$), the set-apart channel reading is dropped.
+
+\section{Numerics amendments and gates}\label{app:amend}
+All registered before the first run that used them; none introduces a new hyperparameter.
+(1)~lr $10^{-3}\to10^{-4}$ after 300-step divergence probes at $d{=}4096$.
+(2)~TF32 for training and capture matmuls; statistics-critical Gram matrices strict fp32 on CPU\@.
+(3)~Chunked cross-entropy, activation checkpointing, fused AdamW for the 8~GB fit;
+loss/grad relative delta $7.7\times10^{-8}$ / $2.8\times10^{-7}$.
+(4)~Gather loss-bearing rows before the unembedding, drop block checkpointing; bitwise on
+the gradient fingerprint; reanalysis of a saved checkpoint reproduces the stored artifact bitwise.
+(5)~bf16 autocast with fp32 master weights and fp32 penalty statistics; gates: one-step
+loss delta $2\times10^{-7}$, max grad-norm delta $1.8\times10^{-3}$, and a full bf16
+seed-0 run whose per-rank split-half reliability is within $0.006$ of the TF32 run on every rank.
+(6)~Pad skipping in per-token GEMMs (22\% of positions are padding; attention is causal
+with no positional code, so pad outputs are dead); loss and residuals bitwise identical,
+grad-norm delta $\le8\times10^{-7}$.
+Step time went $0.435\to0.153$~s over (3)--(6) on the same GPU\@.
+
+\section{Additional tables and figures}
+
+\begin{figure}[h]
+  \centering
+  \begin{tikzpicture}[trim axis group left,trim axis group right]
+    \begin{groupplot}[group style={group size=2 by 1,horizontal sep=1.8cm},scale only axis,
+        width=4.8cm,height=4.0cm,xmode=log,ymode=log,grid=major,grid style={gray!20},
+        legend style={font=\scriptsize,draw=none},legend columns=2,
+      legend style={at={(0.5,-0.32)},anchor=north}]
+      \nextgroupplot[xlabel={angular deviation from $90\degr$ (degrees)},ylabel={density},
+      xmin=0.05,xmax=90,ymin=1e-6]
+      \addplot+[mark=none,thick,gray] table[x=hi,y=random,col sep=comma]{data/dev_hist.csv};
+      \addplot+[mark=none,thick,black] table[x=hi,y=sgd,col sep=comma]{data/dev_hist.csv};
+      \addplot+[mark=none,thick,blue!70!black] table[x=hi,y=disjoint,col
+      sep=comma]{data/dev_hist.csv};
+      \addplot+[mark=none,thick,red!80!black] table[x=hi,y=shared,col sep=comma]{data/dev_hist.csv};
+      \legend{random code,SGD (all pairs),SGD cue-disjoint,SGD shared-cue}
+      \nextgroupplot[xlabel={eigenvalue index},ylabel={share of variance},
+      xmin=1,xmax=256,ymin=1e-4,ymax=0.2]
+      \addplot+[mark=none,thick,gray] table[x=i,y=gaussian,col sep=comma]{data/spectrum.csv};
+      \addplot+[mark=none,thick,black] table[x=i,y=gamma0,col sep=comma]{data/spectrum.csv};
+      \addplot+[mark=none,thick,orange!90!black] table[x=i,y=coact,col
+      sep=comma]{data/spectrum.csv};
+      \addplot+[mark=none,thick,dashed,orange!60!black] table[x=i,y=uniform,col
+      sep=comma]{data/spectrum.csv};
+      \legend{Gaussian (PR 2905),$\gamma{=}0$ (PR 47),$\lambda{=}1$ coact (PR
+      76),$\lambda{=}1$ uniform (PR 77)}
+    \end{groupplot}
+  \end{tikzpicture}
+  \caption{Left, cross-word angular deviation from $90\degr$, seed 0,
+    $5.0\times10^7$ pairs. The random code sits at $0.6\degr$, the SGD bulk at
+    $5\degr$--$6\degr$, and the shared-cue population ($0.19\%$ of pairs) at
+    $43\degr$--$62\degr$. Right, frame-operator spectrum of the centered sense
+    centroids (top 256 of 4096 eigenvalues). The Gaussian reference is flat at
+    $\approx1/4096$, SGD concentrates $45\%$--$47\%$ of variance in $16$
+  directions, and the penalty flattens the top of the spectrum.}
+  \label{fig:hist}
+\end{figure}
+\begin{table}[h]
+  \centering\small
+  \caption{Toy regime, $d{=}64$, 5 seeds per row. Each cell: median, with the seed range
+    beneath. Same-word cosines are means over rank pairs; the regular-simplex value is
+    $-0.333$. \emph{Merge}: runs in which $r_3$--$r_4$ is the least-negative same-word pair
+    (chance $1/6$). $\gamma{=}4$ is the death regime; its geometry is void by protocol
+  (reliability floor $0.39$).}
+  \label{tab:toy}
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabular}{@{}lccccc@{}}
+    \toprule
+    arm & acc & interference & $r_3$--$r_4$ cos & other pairs cos & merge \\
+    \midrule
+    $\gamma{=}0$ & \mr{0.911}{0.898}{0.926} & \mr{0.318}{0.316}{0.361} &
+    \mr{$-0.045$}{$-0.348$}{$+0.094$} & \mr{$-0.380$}{$-0.405$}{$-0.322$} & 4/5 \\
+    \addlinespace
+    $\gamma{=}1$ & \mr{0.909}{0.902}{0.914} & \mr{0.347}{0.322}{0.394} &
+    \mr{$-0.111$}{$-0.262$}{$+0.078$} & \mr{$-0.369$}{$-0.407$}{$-0.343$} & 5/5 \\
+    \addlinespace
+    $\gamma{=}1.5$ & \mr{0.908}{0.901}{0.912} & \mr{0.368}{0.354}{0.436} &
+    \mr{$-0.080$}{$-0.137$}{$+0.162$} & \mr{$-0.372$}{$-0.424$}{$-0.368$} & 5/5 \\
+    \addlinespace
+    $\gamma{=}2$ & \mr{0.894}{0.874}{0.903} & \mr{0.386}{0.356}{0.460} &
+    \mr{$+0.022$}{$-0.158$}{$+0.372$} & \mr{$-0.392$}{$-0.467$}{$-0.357$} & 5/5 \\
+    \addlinespace
+    $\gamma{=}3$ & \mr{0.882}{0.825}{0.903} & \mr{0.416}{0.331}{0.481} &
+    \mr{$+0.128$}{$+0.052$}{$+0.408$} & \mr{$-0.410$}{$-0.476$}{$-0.400$} & 4/5 \\
+    \addlinespace
+    $\gamma{=}4$ & \mr{0.838}{0.677}{0.883} & \mr{0.400}{0.395}{0.430} &
+    \multicolumn{2}{c}{(death regime)} & 3/5 \\
+    \midrule
+    $\lambda{=}1$ & \mr{0.909}{0.898}{0.926} & \mr{0.246}{0.232}{0.259} &
+    \mr{$-0.313$}{$-0.460$}{$-0.257$} & \mr{$-0.330$}{$-0.340$}{$-0.301$} & 0/5 \\
+    \addlinespace
+    $\lambda{=}3$ & \mr{0.918}{0.897}{0.920} & \mr{0.185}{0.162}{0.269} &
+    \mr{$-0.298$}{$-0.384$}{$-0.178$} & \mr{$-0.335$}{$-0.359$}{$-0.314$} & 0/5 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[h]
+  \centering
+  \begin{tikzpicture}[trim axis group left,trim axis group right]
+    \begin{groupplot}[group style={group size=3 by 1,horizontal sep=1.5cm},scale only axis,
+        width=3.15cm,height=3.3cm,xmode=log,xtick={1,2,4,8,16,32},xticklabels={1,2,4,8,16,32},
+        xlabel={deleted dimensions $k$},grid=major,grid style={gray!20},
+        title style={font=\small,yshift=-2pt},
+        cycle
+        list={{red!80!black,mark=*},{blue!70!black,mark=square*},{green!50!black,mark=triangle*},
+        {orange!90!black,mark=diamond*},{violet,mark=pentagon*},{gray,mark=o}},
+      every axis plot/.append style={mark size=1.5pt,thick}]
+      \nextgroupplot[ylabel={held-out accuracy},title={$r_5$ (rarest sense)},ymin=0.15,ymax=0.7]
+      \foreach \b in {shared,rank,cue,generic,rare,random}{
+      \addplot+[discard if not={variant}{\b}] table[x=k,y=r5,col sep=comma]{data/ablation.csv};}
+      \nextgroupplot[title={$r_4$},ymin=0.35,ymax=0.8,legend to name=abllegend,legend columns=6,
+      legend style={font=\scriptsize,draw=none}]
+      \foreach \b in {shared,rank,cue,generic,rare,random}{
+      \addplot+[discard if not={variant}{\b}] table[x=k,y=r4,col sep=comma]{data/ablation.csv};}
+      \legend{shared-cue,rank,cue,generic PCA,rare centroids,random}
+      \nextgroupplot[title={$r_1$ (most frequent)},ymin=0.96,ymax=1.0]
+      \foreach \b in {shared,rank,cue,generic,rare,random}{
+      \addplot+[discard if not={variant}{\b}] table[x=k,y=r1,col sep=comma]{data/ablation.csv};}
+    \end{groupplot}
+  \end{tikzpicture}\\[4pt]
+  \pgfplotslegendfromname{abllegend}\\[10pt]
+  \begin{tikzpicture}[trim axis left,trim axis right]
+    \begin{axis}[scale only axis,width=5.2cm,height=5.2cm,xtick={0,...,5},
+        xticklabels={1,2,4,8,16,32},xlabel={deleted dimensions $k$},ytick={0,...,5},
+        yticklabels={rank,cue,generic PCA,rare centroids,randvar,random},y dir=reverse,
+        xmin=-0.5,xmax=5.5,ymin=-0.5,ymax=5.5,colormap/viridis,point meta min=0,point meta max=1,
+        colorbar,colorbar style={width=0.2cm,tick label style={font=\scriptsize},
+          ylabel={median principal-angle cosine to the shared-cue basis},ylabel
+        style={font=\scriptsize}},
+      tick style={draw=none},axis on top,scatter/use mapped color={draw=none,fill=mapped color}]
+      \addplot[scatter,only marks,mark=square*,mark size=12.5pt,point meta=explicit]
+      table[x=ki,y=b,meta=cos,col sep=comma]{data/overlap.csv};
+      \addplot[only marks,mark=none,cellabels=600,point meta=explicit]
+      table[x=ki,y=b,meta=cos,col sep=comma]{data/overlap.csv};
+    \end{axis}
+  \end{tikzpicture}
+  \caption{Readout deletion, $\gamma{=}0$ seed 0. Top: held-out accuracy after removing the
+    top-$k$ directions of each basis (\texttt{rank} spans only 5 directions). Damage lands on
+    rare senses and every rank-informative basis produces it; a random basis is inert.
+    Bottom: overlap between each control basis and the shared-cue basis at matched $k$, mean
+    over the five checkpoints. \texttt{rank} at $k{=}1$ \emph{is} the shared-cue direction
+    ($0.999$); \texttt{cue} and \texttt{generic} coincide with it from $k{=}4$ on.
+  \texttt{randvar} is the variance-matched random subspace ($k'\gg k$).}
+  \label{fig:abl}
+\end{figure}
+\begin{table}[h]
+  \centering\footnotesize
+  \caption{Frame-operator spectrum ($F{=}W^\top W$) of the centered $10^4$ sense rows of
+    the unembedding and of the centered sense centroids. PR
+  ${=}(\sum\lambda)^2/\sum\lambda^2$; Gaussian reference (same shape) $2905$.}
+  \label{tab:frame}
+
+  \renewcommand{\arraystretch}{1.1}
+  \begin{tabular}{@{}lcccccc@{}}
+    \toprule
+    & \multicolumn{3}{c}{unembedding rows} & \multicolumn{3}{c}{sense centroids} \\
+    \cmidrule(lr){2-4}\cmidrule(lr){5-7}
+    run & PR & $\lambda_1$ share & top-16 share & PR & $\lambda_1$ share & top-16 share \\
+    \midrule
+    $\gamma{=}0$, seeds 0--3 & 1847--1865 & 1.1\% & 3.7--3.8\% & 46--50 & 7.0--8.4\% & 45--47\% \\
+    $\lambda{=}1$ coact (2 runs) & 1424--1428 & 1.7\% & 4.2\% & 72--76 & 3.8--4.6\% & 34--35\% \\
+    $\lambda{=}1$ uniform & 1500 & 1.6\% & 4.2\% & 77 & 3.6\% & 33\% \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[h]
+  \centering\scriptsize
+  \caption{Cross-word deviation, nulls, and cluster 95\% CIs, per run. Null A,
+    isotropic unit vectors in $\mathbb{R}^d$, is the paper's original baseline. Null
+    B, a spectrum-matched Gaussian ($N(0,\Sigma)$ with the empirical centroid
+    covariance, normalized), matches the bulk. $d_{\mathrm{eff}}$, the median
+    deviation of isotropic vectors in PR dimensions. Each CI cell: estimate, word
+    bootstrap CI ($B{=}1000$, 2000 clusters), delete-one-block jackknife CI (500
+    blocks of 4 words sharing a cue pool; each deletion removes about $2\times10^5$
+    pairs, a delete-$d$ jackknife with $d\gg\sqrt{n}$, which is consistent for
+    quantiles). A block bootstrap is not used: it gives within-block pairs weight
+    $m_b^2$ with expectation $2$ against $1$ for cross-block pairs and pulls the
+  tail quantile toward the shared-cue population.}
+  \label{tab:nulls}
+  \renewcommand{\arraystretch}{1.05}
+  \setlength{\tabcolsep}{1.5pt}
+  \begin{tabular}{@{}lcccccc@{}}
+    \toprule
+    run & PR & \makecell{p50\\word / block CI} &
+    \makecell{p99.9\\word / block CI} & null A p50 / p99.9 & null B p50 / p99.9 / max &
+    $d_{\mathrm{eff}}$ p50 \\
+    \midrule
+    $\gamma{=}0$ s0 fp32 & 47 & \makecell{5.59\\5.57--5.62\\5.48--5.71} &
+    \makecell{54.2\\53.9--54.6\\53.2--55.3} & 0.60 / 2.94 & 5.49 / 26.4 / 44.7 &
+    5.63 \\
+    $\gamma{=}0$ s0 bf16 & 50 & \makecell{5.44\\5.42--5.47\\5.33--5.55} &
+    \makecell{54.6\\54.4--55.0\\53.7--55.5} & 0.60 / 2.94 & 5.37 / 25.9 / 43.2 &
+    5.49 \\
+    $\gamma{=}0$ s1 fp32 & 50 & \makecell{5.43\\5.40--5.45\\5.33--5.52} &
+    \makecell{54.8\\54.5--55.1\\53.9--55.7} & 0.60 / 2.95 & 5.39 / 25.8 / 42.4 &
+    5.49 \\
+    $\gamma{=}0$ s2 fp32 & 46 & \makecell{5.65\\5.62--5.68\\5.52--5.78} &
+    \makecell{54.5\\54.2--54.8\\53.6--55.3} & 0.60 / 2.95 & 5.51 / 26.8 / 42.9 &
+    5.68 \\
+    $\gamma{=}0$ s3 fp32 & 50 & \makecell{5.41\\5.39--5.44\\5.31--5.51} &
+    \makecell{54.7\\54.4--55.0\\53.8--55.7} & 0.60 / 2.94 & 5.36 / 25.8 / 44.7 &
+    5.47 \\
+    $\lambda{=}1$ coact s0 fp32 & 76 & \makecell{4.24\\4.23--4.25\\4.20--4.28} &
+    \makecell{52.8\\52.5--53.1\\51.8--53.7} & 0.60 / 2.94 & 4.41 / 21.1 / 35.3 &
+    4.43 \\
+    $\lambda{=}1$ coact s0 bf16 & 72 & \makecell{4.39\\4.38--4.40\\4.34--4.44} &
+    \makecell{53.0\\52.7--53.3\\52.1--53.8} & 0.60 / 2.94 & 4.52 / 21.7 / 35.5 &
+    4.56 \\
+    $\lambda{=}1$ uniform s0 bf16 & 77 & \makecell{4.21\\4.20--4.22\\4.17--4.24} &
+    \makecell{52.5\\52.2--52.8\\51.5--53.5} & 0.60 / 2.94 & 4.38 / 21.0 / 34.0 &
+    4.40 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+\begin{table}[h]
+  \centering\footnotesize
+  \caption{Fairness controls on all five checkpoints. Each cell: $r_5$ held-out accuracy
+    after deleting $k$ directions of the shared-cue basis / of the control basis, with the
+    median principal-angle cosine between the two bases beneath. Last column: the
+    variance-matched random subspace at shared-$k{=}16$'s energy, as $k'$ columns and the
+  resulting $r_5$. Baseline $r_5$: $0.617$, $0.643$, $0.625$, $0.658$, $0.625$.}
+  \label{tab:fairall}
+
+  \renewcommand{\arraystretch}{1.1}
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    run & shared / rank, $k{=}1$ & shared / rank, $k{=}2$ & shared / cue, $k{=}16$ &
+    randvar $k'$, $r_5$ \\
+    \midrule
+    $\gamma{=}0$ s0 & \mc{0.586 / 0.588}{cos 1.000} & \mc{0.483 / 0.485}{cos 0.972} &
+    \mc{0.353 / 0.333}{cos 0.994} & 1656, 0.582 \\
+    \addlinespace
+    $\gamma{=}0$ s1 & \mc{0.634 / 0.643}{cos 0.999} & \mc{0.571 / 0.548}{cos 0.967} &
+    \mc{0.389 / 0.465}{cos 0.994} & 1623, 0.606 \\
+    \addlinespace
+    $\gamma{=}0$ s2 & \mc{0.634 / 0.643}{cos 0.999} & \mc{0.545 / 0.534}{cos 0.990} &
+    \mc{0.373 / 0.360}{cos 0.994} & 1670, 0.589 \\
+    \addlinespace
+    $\lambda{=}1$ coact & \mc{0.559 / 0.559}{cos 0.999} & \mc{0.498 / 0.486}{cos 0.958} &
+    \mc{0.367 / 0.345}{cos 0.982} & 1049, 0.630 \\
+    \addlinespace
+    $\lambda{=}1$ uniform & \mc{0.607 / 0.608}{cos 0.999} & \mc{0.531 / 0.505}{cos 0.924}
+    & \mc{0.405 / 0.407}{cos 0.982} & 1018, 0.601 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Corpus diagnostics}\label{app:corpus}
+Capacity corpus, seed 0 (\texttt{check\_gen.py}): $96{,}000$ sentences of length
+$8/11/14$ tokens ($\approx$ one third each), $9{,}600$ held out. (cue,
+word)$\to$continuation is a function on all $34{,}179$ observed pairs; each word has
+exactly $5$ continuations; each cue $8$--$20$. Rank frequencies
+$0.438/0.229/0.146/0.104/0.083$; prior-only ceiling $0.438$; chance $10^{-4}$.
+Order-blind conflicts (a distractor cue that pairs with the target word for a different
+continuation): $600$ sentences ($0.62\%$), best-guess ceiling $\ge0.993$ per rank. Zero
+duplicate sentences, zero test sentences present in train. $4$ of $814$ held-out $r_5$
+rows have a sense with no training example (reachable ceiling $0.995$); $9$ of $9{,}999$
+senses have fewer than $2$ training examples. Toy corpus: conflicts $3{,}258/19{,}200$
+($17\%$), ceiling $0.917$ overall ($1.0/0.88/0.82/0.79$ by rank under a most-frequent
+tiebreak); observed $r_4$ accuracy $0.89$--$0.91$ exceeds the naive ceiling, so the model
+resolves some conflicts through the distractor word's presence in the bag.
+
+Example sentence: \texttt{<bos> c410\_1\_3 w82 f51 c0\_1\_2 w0 cont\_w0\_1 f61
+c166\_2\_1 w733 f64}.
+
+\end{document}

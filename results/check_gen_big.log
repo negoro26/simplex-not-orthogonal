@@ -1,0 +1,14 @@
+corpus: 96000 sentences, 9600 test; lengths [(8, 32179), (11, 31847), (14, 31974)]
+samples:
+   <bos> c410_1_3 w82 f51 c0_1_2 w0 cont_w0_1 f61 c166_2_1 w733 f64
+   <bos> c432_3_2 w286 f68 c0_1_1 w0 cont_w0_1 f39
+   <bos> c451_2_3 w1290 f7 c0_1_2 w1000 cont_w1000_1 f2 c275_1_1 w855 f51 c283_4_3 w1156 f52
+   <bos> c499_5_1 w1999 cont_w1999_5 f61 c402_3_3 w1380 f34 c361_2_1 w1672 f65
+1. (cue, word) -> cont deterministic for all 34179 pairs
+2. continuations per word: {5: 2000}  (k=5 expected);  per cue: min 8 max 20  (= senses sharing the cue's pool)
+3. rank frequencies [0.438, 0.229, 0.146, 0.104, 0.083]; prior-only (always rank 1) ceiling 0.438; chance 1/10000
+4. order-free CONFLICTS: 600/96000 sentences (0.62%) have a distractor cue that pairs with the target word into a different continuation; by rank {1: 192, 2: 169, 3: 108, 4: 75, 5: 56}
+   best-guess accuracy ceiling for an order-blind reader: overall 0.997; by rank {1: 1.0, 2: 0.995, 3: 0.994, 4: 0.993, 5: 0.993}
+5. test rows per rank {1: 4189, 2: 2193, 3: 1401, 4: 1003, 5: 814}; rows whose sense has 0 train examples {5: 4} -> r5 reachable ceiling 0.995
+   exact duplicate sentences 0; test sentences also in train 0
+   senses with < 2 train examples: 9 of 9999
